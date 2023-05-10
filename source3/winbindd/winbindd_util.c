@@ -126,7 +126,7 @@ static NTSTATUS add_trusted_domain(const char *domain_name,
 				   struct winbindd_domain *routing_domain,
 				   struct winbindd_domain **_d)
 {
-	struct winbindd_domain *domain = NULL;
+	struct winbindd_domain *domain;
 	int role = lp_server_role();
 	struct dom_sid_buf buf;
 
@@ -143,66 +143,35 @@ static NTSTATUS add_trusted_domain(const char *domain_name,
 	 * We can't call domain_list() as this function is called from
 	 * init_domain_list() and we'll get stuck in a loop.
 	 */
-	for (domain = _domain_list; domain; domain = domain->next) {
-		if (strequal(domain_name, domain->name)) {
-			break;
-		}
-	}
+	for (domain = _domain_list;
+	     domain != NULL;
+	     domain = domain->next)
+	{
+		bool same_domain = strequal(domain->name, domain_name);
 
-	if (domain != NULL) {
-		struct winbindd_domain *check_domain = NULL;
-
-		for (check_domain = _domain_list;
-		     check_domain != NULL;
-		     check_domain = check_domain->next)
-		{
-			if (check_domain == domain) {
-				continue;
-			}
-
-			if (dom_sid_equal(&check_domain->sid, sid)) {
-				break;
-			}
-		}
-
-		if (check_domain != NULL) {
-			DBG_ERR("SID [%s] already used by domain [%s], "
-				"expected [%s]\n",
+		if ((dom_sid_equal(&domain->sid, sid) ^ same_domain)) {
+			DBG_ERR("%s [%s] %s used by domain [%s]\n",
+				"SID",
 				dom_sid_str_buf(sid, &buf),
-				check_domain->name,
+				same_domain ? "not" : "already",
 				domain->name);
 			return NT_STATUS_INVALID_PARAMETER;
 		}
-	}
 
-	if ((domain != NULL) && (dns_name != NULL)) {
-		struct winbindd_domain *check_domain = NULL;
-
-		for (check_domain = _domain_list;
-		     check_domain != NULL;
-		     check_domain = check_domain->next)
-		{
-			if (check_domain == domain) {
-				continue;
-			}
-
-			if (strequal(check_domain->alt_name, dns_name)) {
-				break;
-			}
-		}
-
-		if (check_domain != NULL) {
-			DBG_ERR("DNS name [%s] used by domain [%s], "
-				"expected [%s]\n",
-				dns_name, check_domain->name,
+		if (dns_name != NULL &&
+		    (strequal(domain->alt_name, dns_name) ^ same_domain)) {
+			DBG_ERR("%s [%s] %s used by domain [%s]\n",
+				"DNS name",
+				dns_name,
+				same_domain ? "not" : "already",
 				domain->name);
 			return NT_STATUS_INVALID_PARAMETER;
 		}
-	}
 
-	if (domain != NULL) {
-		*_d = domain;
-		return NT_STATUS_OK;
+		if (same_domain) {
+			*_d = domain;
+			return NT_STATUS_OK;
+		}
 	}
 
 	/* Create new domain entry */
