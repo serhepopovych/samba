@@ -165,7 +165,10 @@ static NTSTATUS add_trusted_domain(const char *domain_name,
 				dns_name,
 				same_domain ? "not" : "already",
 				domain->name);
-			return NT_STATUS_INVALID_PARAMETER;
+			/* Do not add trusted domain whose DNS name bound
+			 * to existing (e.g. configured) domain.
+			 */
+			return NT_STATUS_NO_SUCH_DOMAIN;
 		}
 
 		if (same_domain) {
